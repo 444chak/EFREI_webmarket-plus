@@ -63,6 +63,21 @@ resource "aws_autoscaling_group" "app" {
   }
 }
 
+# Scaling Policy (Target Tracking)
+resource "aws_autoscaling_policy" "cpu_policy" {
+  name                   = "${var.project_name}-cpu-target-tracking"
+  autoscaling_group_name = aws_autoscaling_group.app.name
+  policy_type            = "TargetTrackingScaling"
+
+  target_tracking_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ASGAverageCPUUtilization"
+    }
+
+    target_value = 70.0
+  }
+}
+
 # Application Load Balancer
 resource "aws_lb" "web" {
   name               = "${var.project_name}-alb-v2"
