@@ -12,3 +12,8 @@ output "rds_endpoint" {
   description = "RDS Endpoint"
   value       = aws_db_instance.default.endpoint
 }
+
+output "rds_instance_id" {
+  description = "RDS Instance Identifier"
+  value       = aws_db_instance.default.id
+}
