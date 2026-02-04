@@ -20,6 +20,7 @@ L'infrastructure déployée suit une architecture **3-tier** avec haute disponib
 - **Auto Scaling** : Scaling automatique basé sur l'utilisation CPU (cible: 70%)
 - **RDS** : MySQL 8.0 en Multi-AZ pour haute disponibilité
 - **S3** : Bucket privé avec versioning pour le catalogue d'assets
+- **CloudWatch** : Dashboard de monitoring (CPU, instances, trafic HTTP)
 - **Sécurité** : Security Groups avec isolation par tier, pas d'accès SSH public
 
 ## 📋 Prérequis
@@ -52,6 +53,7 @@ terraform apply
 
 - `aws_region` : Région AWS (défaut: `eu-west-3` - Paris)
 - `project_name` : Nom du projet (défaut: `webmarket-plus`)
+- `environment` : Environnement (défaut: `dev`)
 - `db_password` : Mot de passe RDS
 
 ### 3. Population du Data Lake
@@ -92,6 +94,46 @@ python scripts/audit_infra.py
 - Estimation mensuelle
 - Détection de vulnérabilités (SSH public ouvert)
 
+### Backup Manager (`scripts/backup_manager.py`)
+
+Création de snapshots RDS manuels avec horodatage :
+
+```bash
+python scripts/backup_manager.py
+```
+
+- Crée un snapshot avec un ID unique incluant un timestamp
+- Récupère automatiquement l'instance RDS via les outputs Terraform
+- Format du snapshot : `snap-{instance-id}-{YYYY-MM-DD-HH-MM}`
+
+### Cleanup (`scripts/cleanup.py`)
+
+Nettoyage automatique des anciens snapshots RDS :
+
+```bash
+python scripts/cleanup.py
+```
+
+- Supprime les snapshots manuels de plus de 7 jours (configurable)
+- Affiche la liste des snapshots avec leur âge
+- Permet de réduire les coûts de stockage
+
+### Daily Scheduler (`scripts/daily_scheduler.py`)
+
+Gestion automatique des instances EC2 en environnement dev :
+
+```bash
+# Arrêter les instances dev
+python scripts/daily_scheduler.py stop
+
+# Démarrer les instances dev
+python scripts/daily_scheduler.py start
+```
+
+- Cible uniquement les instances avec le tag `Environment=dev`
+- Permet d'économiser les coûts en arrêtant les instances hors heures de travail
+- À planifier avec un cron job ou EventBridge
+
 ## 📊 Outputs Terraform
 
 Après le déploiement, récupérer les informations importantes :
@@ -106,6 +148,21 @@ terraform output
 - `alb_dns_name` : URL publique de l'application
 - `s3_bucket_name` : Nom du bucket S3
 - `rds_endpoint` : Endpoint de la base de données
+- `rds_instance_id` : Identifiant de l'instance RDS
+
+## 📊 Monitoring
+
+Un dashboard CloudWatch est automatiquement créé pour surveiller l'infrastructure :
+
+- **CPU Moyen** : Utilisation CPU moyenne de l'Auto Scaling Group
+- **Instances Actives** : Nombre d'instances en service dans l'ASG
+- **Trafic HTTP** : Nombre de requêtes reçues par l'ALB
+
+Accéder au dashboard depuis la console AWS CloudWatch ou via :
+
+```bash
+aws cloudwatch get-dashboard --dashboard-name webmarket-plus-dashboard-dev
+```
 
 ## 🔒 Sécurité
 
@@ -139,11 +196,16 @@ L'architecture est optimisée pour un environnement de démonstration :
 │   ├── storage.tf      # S3 Bucket
 │   ├── security.tf     # Security Groups
 │   ├── iam.tf          # IAM Roles & Policies
-│   └── variables.tf    # Variables Terraform
+│   ├── monitoring.tf   # CloudWatch Dashboard
+│   ├── variables.tf    # Variables Terraform
+│   └── outputs.tf      # Outputs Terraform
 ├── scripts/            # Scripts Python utilitaires
 │   ├── load_generator.py      # Génération de trafic
 │   ├── audit_infra.py         # Audit FinOps & Sécurité
-│   └── populate_datalake.py   # Upload S3
+│   ├── populate_datalake.py   # Upload S3
+│   ├── backup_manager.py      # Création snapshots RDS
+│   ├── cleanup.py             # Nettoyage snapshots anciens
+│   └── daily_scheduler.py     # Gestion instances dev
 └── assets/             # Assets à uploader dans S3
 ```
 
@@ -160,5 +222,8 @@ terraform destroy
 
 - L'architecture utilise **Multi-AZ** pour RDS (haute disponibilité)
 - Le **Auto Scaling** est configuré pour maintenir 2-4 instances selon la charge
-- Les **snapshots RDS** sont désactivés par défaut (à activer en production)
+- Les **snapshots RDS** peuvent être créés manuellement via `backup_manager.py`
+- Le script `cleanup.py` permet de gérer la rétention des snapshots (7 jours par défaut)
+- Le **Daily Scheduler** permet d'économiser sur les environnements dev en arrêtant les instances la nuit
+- Le **dashboard CloudWatch** est créé automatiquement pour le monitoring
 - Le mot de passe RDS par défaut doit être changé en production
